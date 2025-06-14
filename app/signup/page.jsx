@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
+import { useRouter } from 'next/navigation'; // Add this import
 import { gsap } from 'gsap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,9 @@ export default function AuthPages() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isMounted, setIsMounted] = useState(false);
   
+  const router = useRouter(); // Add router
   const containerRef = useRef(null);
   const cardRef = useRef(null);
   const backgroundRef = useRef(null);
@@ -26,8 +29,19 @@ export default function AuthPages() {
   
   const { register, handleSubmit, formState: { errors }, reset, watch } = useForm();
 
-  // Background animation setup
+  // Generate consistent random sizes for shapes
+  const shapeSizes = useMemo(() => {
+    return Array(6).fill().map(() => ({
+      width: Math.random() * 200 + 100,
+      height: Math.random() * 200 + 100,
+    }));
+  }, []);
+
   useEffect(() => {
+    setIsMounted(true);
+    
+    if (!isMounted) return;
+
     const shapes = shapesRef.current;
     
     // Animate floating shapes
@@ -84,9 +98,8 @@ export default function AuthPages() {
       }
     );
 
-  }, []);
+  }, [isMounted]);
 
-  // Toggle animation
   const toggleForm = () => {
     const tl = gsap.timeline();
     
@@ -118,13 +131,11 @@ export default function AuthPages() {
     );
   };
 
-  // Submit handler
   const onSubmit = async (data) => {
     setIsSubmitting(true);
     setErrorMessage('');
     setSubmitSuccess(false);
     
-    // Button animation
     gsap.to(buttonRef.current, {
       scale: 0.95,
       duration: 0.1,
@@ -147,43 +158,42 @@ export default function AuthPages() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        credentials: 'include' // This ensures cookies are sent and received
       });
-
+      
       const result = await response.json();
 
       if (!response.ok) {
         throw new Error(result.message || `${isLogin ? 'Login' : 'Registration'} failed`);
       }
       
-      setSubmitSuccess(true);
-      
-      // Success animation
-      gsap.to(cardRef.current, {
-        scale: 1.02,
-        duration: 0.3,
-        yoyo: true,
-        repeat: 1,
-        ease: "power2.inOut"
-      });
-      
-      console.log(`${isLogin ? 'Login' : 'Registration'} successful:`, result);
-      
-      // Store token if provided
-      if (result.token) {
-        localStorage.setItem('authToken', result.token);
+      if (result.success) {
+        setSubmitSuccess(true);
+        
+        gsap.to(cardRef.current, {
+          scale: 1.02,
+          duration: 0.3,
+          yoyo: true,
+          repeat: 1,
+          ease: "power2.inOut"
+        });
+        
+        // Add a small delay to ensure cookie is properly set
+        setTimeout(() => {
+          console.log('Cookies before navigation:', document.cookie);
+          router.push('/dashboard'); // Use router.push instead of window.location.href
+        }, 5000); // Increased delay to 1.5 seconds
+      } else {
+        throw new Error(result.message || 'Authentication failed');
       }
       
-      // Reset form after successful submission
-      setTimeout(() => {
-        reset();
-        setSubmitSuccess(false);
-      }, 3000);
-      
     } catch (error) {
-      console.error(`${isLogin ? 'Login' : 'Registration'} failed:`, error);
-      setErrorMessage(error.message || 'An unexpected error occurred');
+      let message = error.message;
+      if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+        message = 'Network error - please check your connection and try again';
+      }
+      setErrorMessage(message || 'An unexpected error occurred');
       
-      // Error animation
       gsap.to(cardRef.current, {
         x: -10,
         duration: 0.1,
@@ -196,10 +206,22 @@ export default function AuthPages() {
     }
   };
 
-  const inputVariants = {
-    focus: { scale: 1.02, transition: { duration: 0.2 } },
-    blur: { scale: 1, transition: { duration: 0.2 } }
-  };
+  // Debug: Check cookies periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('Current cookies:', document.cookie);
+    }, 2000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="animate-pulse text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -208,7 +230,7 @@ export default function AuthPages() {
     >
       {/* Animated Background Shapes */}
       <div ref={backgroundRef} className="absolute inset-0 overflow-hidden">
-        {[...Array(6)].map((_, i) => (
+        {shapeSizes.map((size, i) => (
           <div
             key={i}
             ref={el => shapesRef.current[i] = el}
@@ -217,17 +239,17 @@ export default function AuthPages() {
               i % 3 === 1 ? 'bg-blue-400' : 'bg-indigo-400'
             }`}
             style={{
-              width: `${Math.random() * 200 + 100}px`,
-              height: `${Math.random() * 200 + 100}px`,
+              width: `${size.width}px`,
+              height: `${size.height}px`,
               filter: 'blur(1px)'
             }}
           />
         ))}
       </div>
 
-      {/* Gradient Orbs */}
-      <div className="absolute top-20 left-20 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-      <div className="absolute bottom-20 right-20 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" style={{animationDelay: '2s'}}></div>
+      {/* Gradient Orbs - now with fixed sizes */}
+      <div className="absolute top-20 left-20 size-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+      <div className="absolute bottom-20 right-20 size-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" style={{animationDelay: '2s'}}></div>
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse" style={{animationDelay: '4s'}}></div>
 
       <Card 
@@ -379,7 +401,7 @@ export default function AuthPages() {
               <Alert className="form-element bg-green-500/20 border-green-500/50 text-green-100">
                 <Sparkles className="h-4 w-4" />
                 <AlertDescription>
-                  {isLogin ? 'Login successful! Welcome back!' : 'Account created successfully! You can now sign in.'}
+                  {isLogin ? 'Login successful! Redirecting to dashboard...' : 'Account created successfully! Logging you in...'}
                 </AlertDescription>
               </Alert>
             )}
