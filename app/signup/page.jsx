@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
-import { useRouter } from 'next/navigation'; // Add this import
+import { useRouter } from 'next/navigation';
 import { gsap } from 'gsap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,7 +19,7 @@ export default function AuthPages() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isMounted, setIsMounted] = useState(false);
   
-  const router = useRouter(); // Add router
+  const router = useRouter();
   const containerRef = useRef(null);
   const cardRef = useRef(null);
   const backgroundRef = useRef(null);
@@ -131,6 +131,13 @@ export default function AuthPages() {
     );
   };
 
+  // Store token in localStorage as fallback for cross-origin issues
+  const storeToken = (token) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('authToken', token);
+    }
+  };
+
   const onSubmit = async (data) => {
     setIsSubmitting(true);
     setErrorMessage('');
@@ -170,6 +177,11 @@ export default function AuthPages() {
       if (result.success) {
         setSubmitSuccess(true);
         
+        // Store token as fallback for cross-origin cookie issues
+        if (result.token) {
+          storeToken(result.token);
+        }
+        
         gsap.to(cardRef.current, {
           scale: 1.02,
           duration: 0.3,
@@ -178,11 +190,31 @@ export default function AuthPages() {
           ease: "power2.inOut"
         });
         
-        // Add a small delay to ensure cookie is properly set
-        setTimeout(() => {
-          console.log('Cookies before navigation:', document.cookie);
-          router.push('/dashboard'); // Use router.push instead of window.location.href
-        }, 5000); // Increased delay to 1.5 seconds
+        // Test authentication immediately after login
+        setTimeout(async () => {
+          try {
+            const authToken = localStorage.getItem('authToken');
+            const verifyResponse = await fetch('https://uni-talk-backend-production.up.railway.app/api/auth/verify', {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include'
+            });
+            
+            if (verifyResponse.ok) {
+              console.log('Authentication verified, redirecting...');
+              router.push('/dashboard');
+            } else {
+              console.error('Authentication verification failed');
+              setErrorMessage('Authentication verification failed. Please try logging in again.');
+            }
+          } catch (error) {
+            console.error('Verification error:', error);
+            setErrorMessage('Network error during verification. Please try again.');
+          }
+        }, 1000);
       } else {
         throw new Error(result.message || 'Authentication failed');
       }
@@ -205,15 +237,6 @@ export default function AuthPages() {
       setIsSubmitting(false);
     }
   };
-
-  // Debug: Check cookies periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      console.log('Current cookies:', document.cookie);
-    }, 2000);
-    
-    return () => clearInterval(interval);
-  }, []);
 
   if (!isMounted) {
     return (
@@ -247,7 +270,7 @@ export default function AuthPages() {
         ))}
       </div>
 
-      {/* Gradient Orbs - now with fixed sizes */}
+      {/* Gradient Orbs */}
       <div className="absolute top-20 left-20 size-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
       <div className="absolute bottom-20 right-20 size-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" style={{animationDelay: '2s'}}></div>
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse" style={{animationDelay: '4s'}}></div>
